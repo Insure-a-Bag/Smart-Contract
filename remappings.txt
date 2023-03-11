@@ -1,3 +1,7 @@
-@prb/test/=lib/prb-test/src/
+@prb/test/=lib/prb-math/lib/prb-test/src/
+ds-test/=lib/forge-std/lib/ds-test/src/
 forge-std/=lib/forge-std/src/
-src/=src/
+openzeppelin-contracts/=lib/openzeppelin-contracts/
+prb-math/=lib/prb-math/src/
+prb-test/=lib/prb-test/src/
+src/=lib/prb-math/src/
