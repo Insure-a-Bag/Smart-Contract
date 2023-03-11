@@ -1,4 +1,6 @@
+@openzeppelin/=lib/ERC5643/lib/openzeppelin-contracts/
 @prb/test/=lib/prb-math/lib/prb-test/src/
+ERC5643/=lib/ERC5643/src/
 ds-test/=lib/forge-std/lib/ds-test/src/
 forge-std/=lib/forge-std/src/
 openzeppelin-contracts/=lib/openzeppelin-contracts/
