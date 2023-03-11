@@ -14,6 +14,3 @@
 	path = lib/openzeppelin-contracts
 	url = https://github.com/OpenZeppelin/openzeppelin-contracts
 	branch = v4.8.2
-[submodule "lib/ERC5643"]
-	path = lib/ERC5643
-	url = https://github.com/cygaar/ERC5643
