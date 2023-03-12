@@ -3,42 +3,34 @@
 pragma solidity >=0.8.19;
 
 import { ERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
-import { IERC5643 } from "../src/interfaces/IERC5463.sol";
-
-error RenewalTooShort();
-error RenewalTooLong();
-error InsufficientPayment();
-error SubscriptionNotRenewable();
-error InvalidTokenId();
-error CallerNotOwnerNorApproved();
+import { IERC5643 } from "src/interfaces/IERC5463.sol";
 
 contract ERC5643 is ERC721, IERC5643 {
+    error RenewalTooShort();
+    error RenewalTooLong();
+    error InsufficientPayment();
+    error SubscriptionNotRenewable();
+    error InvalidTokenId();
+    error CallerNotOwnerNorApproved();
+
     mapping(uint256 => uint64) private _expirations;
 
     uint64 private minimumRenewalDuration;
     uint64 private maximumRenewalDuration;
 
-    constructor(string memory name_, string memory symbol_)
-        ERC721(name_, symbol_)
-    {}
+    constructor(string memory name_, string memory symbol_) ERC721(name_, symbol_) { }
 
     /**
      * @dev See {IERC5643-renewSubscription}.
      */
-    function renewSubscription(uint256 tokenId, uint64 duration)
-        external
-        payable
-        virtual
-    {
+    function renewSubscription(uint256 tokenId, uint64 duration) external payable virtual {
         if (!_isApprovedOrOwner(msg.sender, tokenId)) {
             revert CallerNotOwnerNorApproved();
         }
 
         if (duration < minimumRenewalDuration) {
             revert RenewalTooShort();
-        } else if (
-            maximumRenewalDuration != 0 && duration > maximumRenewalDuration
-        ) {
+        } else if (maximumRenewalDuration != 0 && duration > maximumRenewalDuration) {
             revert RenewalTooLong();
         }
 
@@ -55,10 +47,7 @@ contract ERC5643 is ERC721, IERC5643 {
      * If a token is not renewable, an error will be thrown.
      * Emits a {SubscriptionUpdate} event after the subscription is extended.
      */
-    function _extendSubscription(uint256 tokenId, uint64 duration)
-        internal
-        virtual
-    {
+    function _extendSubscription(uint256 tokenId, uint64 duration) internal virtual {
         if (!_exists(tokenId)) {
             revert InvalidTokenId();
         }
@@ -84,12 +73,7 @@ contract ERC5643 is ERC721, IERC5643 {
      * a given tokenId. This value is defaulted to 0, but should be overridden in
      * implementing contracts.
      */
-    function _getRenewalPrice(uint256 tokenId, uint64 duration)
-        internal
-        view
-        virtual
-        returns (uint256)
-    {
+    function _getRenewalPrice(uint256 tokenId, uint64 duration) internal view virtual returns (uint256) {
         return 0;
     }
 
@@ -109,12 +93,7 @@ contract ERC5643 is ERC721, IERC5643 {
     /**
      * @dev See {IERC5643-expiresAt}.
      */
-    function expiresAt(uint256 tokenId)
-        external
-        view
-        virtual
-        returns (uint64)
-    {
+    function expiresAt(uint256 tokenId) external view virtual returns (uint64) {
         if (!_exists(tokenId)) {
             revert InvalidTokenId();
         }
@@ -124,12 +103,7 @@ contract ERC5643 is ERC721, IERC5643 {
     /**
      * @dev See {IERC5643-isRenewable}.
      */
-    function isRenewable(uint256 tokenId)
-        external
-        view
-        virtual
-        returns (bool)
-    {
+    function isRenewable(uint256 tokenId) external view virtual returns (bool) {
         if (!_exists(tokenId)) {
             revert InvalidTokenId();
         }
@@ -141,12 +115,7 @@ contract ERC5643 is ERC721, IERC5643 {
      * should override this function if renewabilty should be disabled for all or
      * some tokens.
      */
-    function _isRenewable(uint256 tokenId)
-        internal
-        view
-        virtual
-        returns (bool)
-    {
+    function _isRenewable(uint256 tokenId) internal view virtual returns (bool) {
         return true;
     }
 
@@ -167,14 +136,7 @@ contract ERC5643 is ERC721, IERC5643 {
     /**
      * @dev See {IERC165-supportsInterface}.
      */
-    function supportsInterface(bytes4 interfaceId)
-        public
-        view
-        virtual
-        override
-        returns (bool)
-    {
-        return interfaceId == type(IERC5643).interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view virtual override returns (bool) {
+        return interfaceId == type(IERC5643).interfaceId || super.supportsInterface(interfaceId);
     }
 }

@@ -11,9 +11,7 @@ interface IERC5643 {
     /// Throws if `tokenId` is not a valid NFT
     /// @param tokenId The NFT to renew the subscription for
     /// @param duration The number of seconds to extend a subscription for
-    function renewSubscription(uint256 tokenId, uint64 duration)
-        external
-        payable;
+    function renewSubscription(uint256 tokenId, uint64 duration) external payable;
 
     /// @notice Cancels the subscription of an NFT
     /// @dev Throws if `tokenId` is not a valid NFT
