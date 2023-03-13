@@ -9,10 +9,6 @@ import { Strings } from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import { Pausable } from "openzeppelin-contracts/contracts/security/Pausable.sol";
 
 contract InsureABag is ERC5643, Ownable, Pausable {
-    error TokenAlreadyInsured();
-
-    error IsZeroAddress();
-
     /*//////////////////////////////////////////////////////////////
                              LIB IMPORTS
     //////////////////////////////////////////////////////////////*/
@@ -24,6 +20,14 @@ contract InsureABag is ERC5643, Ownable, Pausable {
     //////////////////////////////////////////////////////////////*/
 
     error NonexistentToken();
+
+    error TokenAlreadyInsured();
+
+    error IsZeroAddress();
+
+    error UnsupportedCollection();
+
+    error InvalidDuration();
 
     /*//////////////////////////////////////////////////////////////
                                  ENUM
@@ -74,16 +78,44 @@ contract InsureABag is ERC5643, Ownable, Pausable {
         return block.timestamp;
     }
 
-    function getExpiryTimestamp(ExpiryDuration _expiryDuration) internal view returns (uint256) {
-        uint256 expiresTimestamp;
-        if (_expiryDuration == ExpiryDuration.Year) {
-            expiresTimestamp = getCurrentBlockstamp() + 365 days;
-        } else if (_expiryDuration == ExpiryDuration.TwoYears) {
-            expiresTimestamp = getCurrentBlockstamp() + 730 days;
-        } else if (_expiryDuration == ExpiryDuration.ThreeYears) {
-            expiresTimestamp = getCurrentBlockstamp() + 1460 days;
+    function getDuration(uint256 _duration) internal pure returns (uint256) {
+        if (_duration > 3) revert InvalidDuration();
+        uint256 insuranceDuration;
+        if (_duration == 1) {
+            insuranceDuration = 365 days;
+        } else if (_duration == 2) {
+            insuranceDuration = 730 days;
+        } else if (_duration == 3) {
+            insuranceDuration = 1460 days;
         }
-        return expiresTimestamp;
+        return insuranceDuration;
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        MERKLE FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function setCollectionsMerkleRoot(bytes32 _merkleRoot) external onlyOwner {
+        collectionsMerkleRoot = _merkleRoot;
+    }
+
+    function leaf(address _contractAddress) internal pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_contractAddress));
+    }
+
+    function _verifyAddress(bytes32 _leaf, bytes32[] memory _proof) internal view returns (bool) {
+        return MerkleProof.verify(_proof, collectionsMerkleRoot, _leaf);
+    }
+
+    function isCollectionAddressSupported(
+        address _contractAddress,
+        bytes32[] calldata _proof
+    )
+        internal
+        view
+        returns (bool)
+    {
+        return _verifyAddress(leaf(_contractAddress), _proof);
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -124,22 +156,22 @@ contract InsureABag is ERC5643, Ownable, Pausable {
                         MINT FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    // Need to add price logic and whitelisted collections only
-
+    //Need to add price logic
     function mintInsurancePolicy(
-        address _collectionAddress,
-        uint256 _insuredToken,
-        ExpiryDuration _expiryDuration
+        address _contractAddress,
+        uint256 _tokenId,
+        bytes32[] calldata _proof,
+        uint256 _duration
     )
         external
         payable
     {
-        if (_currentUsers[msg.sender][_collectionAddress].insuredTokenId == _insuredToken) {
-            revert TokenAlreadyInsured();
-        }
+        if (!isCollectionAddressSupported(_contractAddress, _proof)) revert UnsupportedCollection();
+        if (_currentUsers[msg.sender][_contractAddress].insuredTokenId == _tokenId) revert TokenAlreadyInsured();
+
         PolicyInfo memory newPolicy =
-            PolicyInfo({ insuredTokenId: _insuredToken, expiresTimestamp: getExpiryTimestamp(_expiryDuration) });
-        _currentUsers[msg.sender][_collectionAddress] = newPolicy;
+            PolicyInfo({ insuredTokenId: _tokenId, expiresTimestamp: getCurrentBlockstamp() + getDuration(_duration) });
+        _currentUsers[msg.sender][_contractAddress] = newPolicy;
         currentIndex += 1;
         _safeMint(msg.sender, currentIndex);
     }
