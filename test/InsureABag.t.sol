@@ -19,7 +19,6 @@ contract InsureABagTest is PRBTest, StdCheats {
     string public name = "InsureABag";
     string public symbol = "IAB";
 
-
     function setUp() public {
         (owner, ownerPkey) = makeAddrAndKey("owner");
 
