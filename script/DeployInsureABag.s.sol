@@ -16,7 +16,10 @@ contract DeployInsureABag is Script {
     function run() public {
         vm.startBroadcast(deployer);
 
-        insureabag = new InsureABag("InsureABag", "IAB");
+        address apeEth = 0x239d5b78680e9AD600Ab41E56508670BA9E78F51;
+        address ape = 0x239d5b78680e9AD600Ab41E56508670BA9E78F51;
+
+        insureabag = new InsureABag("InsureABag", "IAB", ape, apeEth);
 
         vm.stopBroadcast();
     }

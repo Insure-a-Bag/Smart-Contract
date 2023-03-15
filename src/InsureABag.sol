@@ -13,12 +13,9 @@ import { AggregatorV3Interface } from "src/interfaces/AggregatorV3Interface.sol"
 contract InsureABag is ERC721, Ownable, Pausable {
     using Strings for uint256;
 
-    struct PolicyInfo {
-        uint256 expiresTimestamp;
-    }
+    event PolicyCreated(uint256 policyId, address collectionAddress, uint256 tokenId, uint256 expiryTime);
 
-    AggregatorV3Interface internal ethPrice;
-    AggregatorV3Interface internal apePrice;
+    AggregatorV3Interface internal apeEth;
     IERC20 internal apeCoin;
     uint256 private currentIndex;
     address public vaultAddress;
@@ -31,23 +28,14 @@ contract InsureABag is ERC721, Ownable, Pausable {
     error IsZeroAddress();
     error UnsupportedCollection();
     error InvalidDuration();
-    error NotOwnerOrApproved();
+    error NotOwnerNorApproved();
 
-    mapping(address useraddress => mapping(address contractAddress => mapping(uint256 tokenId => PolicyInfo))) public
-        _currentUsers;
+    mapping(address useraddress => mapping(address contractAddress => mapping(uint256 tokenId => uint256 expiry)))
+        internal _currentUsers;
 
-    constructor(
-        string memory name_,
-        string memory symbol_,
-        address _apeCoin,
-        address _ethPrice,
-        address _apePrice
-    )
-        ERC721(name_, symbol_)
-    {
+    constructor(string memory name_, string memory symbol_, address _apeCoin, address _apeEth) ERC721(name_, symbol_) {
         apeCoin = IERC20(_apeCoin);
-        ethPrice = AggregatorV3Interface(_ethPrice);
-        apePrice = AggregatorV3Interface(_apePrice);
+        apeEth = AggregatorV3Interface(_apeEth);
     }
 
     /// @notice mint a new policy
@@ -66,14 +54,46 @@ contract InsureABag is ERC721, Ownable, Pausable {
     {
         if (!isMultipleOfMonth(_duration)) revert InvalidDuration();
         if (!isCollectionAddressSupported(_contractAddress, _proof)) revert UnsupportedCollection();
-        if (_currentUsers[msg.sender][_contractAddress][_tokenId].expiresTimestamp != 0) {
+        if (_currentUsers[msg.sender][_contractAddress][_tokenId] != 0) {
             revert TokenAlreadyRegistered();
         }
-
-        PolicyInfo memory newPolicy = PolicyInfo({ expiresTimestamp: getCurrentBlockstamp() + (_duration * 1 days) });
-        _currentUsers[msg.sender][_contractAddress][_tokenId] = newPolicy;
+        uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
+        _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
         currentIndex += 1;
         _safeMint(msg.sender, currentIndex);
+        emit PolicyCreated(currentIndex, _contractAddress, _tokenId, expiryTimestamp);
+    }
+
+    /// @notice renew a existing policy
+    /// @param _contractAddress the address of the collection
+    /// @param _tokenId the id of the token
+    /// @param _duration the duration of the policy
+    function renewPolicy(
+        uint256 _policyId,
+        address _contractAddress,
+        uint256 _tokenId,
+        uint64 _duration
+    )
+        external
+        payable
+    {
+        if (!_isApprovedOrOwner(msg.sender, _policyId)) revert NotOwnerNorApproved();
+        if (!isMultipleOfMonth(_duration)) revert InvalidDuration();
+        uint256 expiryTime = _currentUsers[msg.sender][_contractAddress][_tokenId];
+        if (_getCurrentBlockstamp() > expiryTime) {
+            _currentUsers[msg.sender][_contractAddress][_tokenId] = _getCurrentBlockstamp() + (_duration * 1 days);
+        } else if (_getCurrentBlockstamp() < expiryTime) {
+            _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTime + (_duration * 1 days);
+        }
+    }
+
+    /// @notice cancel the insurance Policy
+    /// @param _contractAddress the address of the collection
+    /// @param _tokenId the id of the token
+    function cancelSubscription(uint256 _policyId, address _contractAddress, uint256 _tokenId) external {
+        if (!_isApprovedOrOwner(msg.sender, _tokenId)) revert NotOwnerNorApproved();
+        delete _currentUsers[msg.sender][_contractAddress][_tokenId];
+        _burn(_policyId);
     }
 
     function tokenURI(uint256 _tokenId) public view virtual override returns (string memory) {
@@ -107,9 +127,41 @@ contract InsureABag is ERC721, Ownable, Pausable {
         return _verifyAddress(leaf(_contractAddress), _proof);
     }
 
+    /// @notice return the expiry timestamp of policy
+    /// @param _userAddress of the policy holder
+    /// @param _collectionAddress the address of the collection
+    /// @param _tokenId the insured tokenId
+    function getExpiryTimestamp(
+        address _userAddress,
+        address _collectionAddress,
+        uint256 _tokenId
+    )
+        external
+        view
+        returns (uint256)
+    {
+        return _currentUsers[_userAddress][_collectionAddress][_tokenId];
+    }
+
+    /// @notice return true if policy has expired
+    /// @param _userAddress of the policy holder
+    /// @param _collectionAddress the address of the collection
+    /// @param _tokenId the insured tokenId
+    function _isExpired(
+        address _userAddress,
+        address _collectionAddress,
+        uint256 _tokenId
+    )
+        external
+        view
+        returns (bool)
+    {
+        return _currentUsers[_userAddress][_collectionAddress][_tokenId] < _getCurrentBlockstamp();
+    }
+
     /// @notice returns the current block timestamp
     /// @return the current block timestamp
-    function getCurrentBlockstamp() internal view returns (uint256) {
+    function _getCurrentBlockstamp() internal view returns (uint256) {
         return block.timestamp;
     }
 
