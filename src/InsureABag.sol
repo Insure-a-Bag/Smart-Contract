@@ -6,11 +6,14 @@ import { ERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol
 import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import { MerkleProof } from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { Strings } from "openzeppelin-contracts/contracts/utils/Strings.sol";
+import { SafeMath } from "openzeppelin-contracts/contracts/utils/math/SafeMath.sol";
 import { Pausable } from "openzeppelin-contracts/contracts/security/Pausable.sol";
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
+import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
 import { AggregatorV3Interface } from "src/interfaces/AggregatorV3Interface.sol";
 
 contract InsureABag is ERC721, Ownable, Pausable {
+    using SafeMath for uint256;
     using Strings for uint256;
 
     event PolicyCreated(uint256 policyId, address collectionAddress, uint256 tokenId, uint256 expiryTime);
@@ -18,6 +21,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
     AggregatorV3Interface internal apeEth;
     IERC20 internal apeCoin;
     uint256 private currentIndex;
+    uint256 internal maxRate;
     address public vaultAddress;
     string public baseURI;
     string public uriExtension;
@@ -29,6 +33,9 @@ contract InsureABag is ERC721, Ownable, Pausable {
     error UnsupportedCollection();
     error InvalidDuration();
     error NotOwnerNorApproved();
+    error InsufficientFunds();
+    error InvalidWithdrawalAmount();
+    error NotNFTOwner();
 
     mapping(address useraddress => mapping(address contractAddress => mapping(uint256 tokenId => uint256 expiry)))
         internal _currentUsers;
@@ -51,12 +58,45 @@ contract InsureABag is ERC721, Ownable, Pausable {
     )
         external
         payable
+        whenNotPaused
     {
-        if (!isMultipleOfMonth(_duration)) revert InvalidDuration();
+        if (!_isMultipleOfMonth(_duration)) revert InvalidDuration();
         if (!isCollectionAddressSupported(_contractAddress, _proof)) revert UnsupportedCollection();
         if (_currentUsers[msg.sender][_contractAddress][_tokenId] != 0) {
             revert TokenAlreadyRegistered();
         }
+        if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
+        if (msg.value < _getCostETH(_duration)) revert InsufficientFunds();
+        uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
+        _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
+        currentIndex += 1;
+        _safeMint(msg.sender, currentIndex);
+        emit PolicyCreated(currentIndex, _contractAddress, _tokenId, expiryTimestamp);
+    }
+
+    /// @notice mint a new policy
+    /// @param _contractAddress the address of the collection
+    /// @param _tokenId the id of the token
+    /// @param _proof the merkle proof
+    /// @param _duration the duration of the policy
+    function mintInsurancePolicyApe(
+        address _contractAddress,
+        uint256 _tokenId,
+        bytes32[] calldata _proof,
+        uint256 _duration
+    )
+        external
+        payable
+        whenNotPaused
+    {
+        if (!_isMultipleOfMonth(_duration)) revert InvalidDuration();
+        if (!isCollectionAddressSupported(_contractAddress, _proof)) revert UnsupportedCollection();
+        if (_currentUsers[msg.sender][_contractAddress][_tokenId] != 0) {
+            revert TokenAlreadyRegistered();
+        }
+        if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
+        if (apeCoin.balanceOf(msg.sender) < _getCostApe(_duration)) revert InsufficientFunds();
+        apeCoin.transferFrom(msg.sender, address(this), _getCostApe(_duration));
         uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
         _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
         currentIndex += 1;
@@ -76,9 +116,39 @@ contract InsureABag is ERC721, Ownable, Pausable {
     )
         external
         payable
+        whenNotPaused
     {
         if (!_isApprovedOrOwner(msg.sender, _policyId)) revert NotOwnerNorApproved();
-        if (!isMultipleOfMonth(_duration)) revert InvalidDuration();
+        if (!_isMultipleOfMonth(_duration)) revert InvalidDuration();
+        if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
+        if (msg.value < _getCostETH(_duration)) revert InsufficientFunds();
+        uint256 expiryTime = _currentUsers[msg.sender][_contractAddress][_tokenId];
+        if (_getCurrentBlockstamp() > expiryTime) {
+            _currentUsers[msg.sender][_contractAddress][_tokenId] = _getCurrentBlockstamp() + (_duration * 1 days);
+        } else if (_getCurrentBlockstamp() < expiryTime) {
+            _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTime + (_duration * 1 days);
+        }
+    }
+
+    /// @notice renew a existing policy
+    /// @param _contractAddress the address of the collection
+    /// @param _tokenId the id of the token
+    /// @param _duration the duration of the policy
+    function renewPolicyApe(
+        uint256 _policyId,
+        address _contractAddress,
+        uint256 _tokenId,
+        uint64 _duration
+    )
+        external
+        payable
+        whenNotPaused
+    {
+        if (!_isApprovedOrOwner(msg.sender, _policyId)) revert NotOwnerNorApproved();
+        if (!_isMultipleOfMonth(_duration)) revert InvalidDuration();
+        if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
+        if (apeCoin.balanceOf(msg.sender) < _getCostApe(_duration)) revert InsufficientFunds();
+        apeCoin.transferFrom(msg.sender, address(this), _getCostApe(_duration));
         uint256 expiryTime = _currentUsers[msg.sender][_contractAddress][_tokenId];
         if (_getCurrentBlockstamp() > expiryTime) {
             _currentUsers[msg.sender][_contractAddress][_tokenId] = _getCurrentBlockstamp() + (_duration * 1 days);
@@ -165,8 +235,55 @@ contract InsureABag is ERC721, Ownable, Pausable {
         return block.timestamp;
     }
 
+    /// @notice obtain the current APE/ETH rate
+    function getApeEthRate() internal view returns (uint256) {
+        (, int256 price,,,) = apeEth.latestRoundData();
+        return uint256(price);
+    }
+
+    /// @notice obtains the floor price of collection
+    /// Needs to be incorporated with oracle
+    function _getFloorPrice() internal pure returns (uint256) {
+        return 0.01 ether;
+    }
+
+    /// @notice multiplies ETH cost per month by number of months
+    function _getCostETH(uint256 _duration) internal view returns (uint256) {
+        uint256 durationInMonths = _duration.div(30);
+        uint256 usedRate = getRate(_duration);
+        uint256 rateTimesDuration = usedRate.mul(durationInMonths);
+        return _getFloorPrice().mul(rateTimesDuration).div(10_000);
+    }
+
+    /// @notice multiplies Ape cost per month by number of months
+    /// @param _duration the duration in months
+    function _getCostApe(uint256 _duration) internal view returns (uint256) {
+        uint256 floorPriceApe = _getFloorPrice().div(getApeEthRate());
+        uint256 durationInMonths = _duration.div(30);
+        uint256 usedRate = getRate(_duration);
+        uint256 rateTimesDuration = usedRate.mul(durationInMonths);
+        return floorPriceApe.mul(rateTimesDuration).div(10_000);
+    }
+
+    /// @notice calculate a progressive rate
+    /// @param _duration the duration in months
+    function getRate(uint256 _duration) internal view returns (uint256) {
+        uint256 usedRate;
+        if (_duration >= 180 && _duration < 360) {
+            usedRate = maxRate.mul(70).div(100);
+        } else if (_duration >= 360 && _duration < 540) {
+            usedRate = maxRate.mul(50).div(100);
+        } else if (_duration >= 540) {
+            usedRate = maxRate.mul(30).div(100);
+        } else {
+            usedRate = maxRate;
+        }
+        return usedRate;
+    }
+
     /// @notice checks if the duration is a multiple of a month
-    function isMultipleOfMonth(uint256 _duration) public pure returns (bool) {
+    /// @param _duration the duration in months
+    function _isMultipleOfMonth(uint256 _duration) internal pure returns (bool) {
         uint256 oneMonth = 30;
         return _duration % oneMonth == 0;
     }
@@ -178,8 +295,14 @@ contract InsureABag is ERC721, Ownable, Pausable {
         vaultAddress = _vaultAddress;
     }
 
+    /// @notice sets the vault address
+    /// @param _rate the percent of floor price charged per month
+    function setRate(uint256 _rate) external onlyOwner {
+        maxRate = _rate;
+    }
     /// @notice sets the uri for the token metadata
     /// @param _baseURI the base URI for the token metadata
+
     function setBaseURI(string memory _baseURI) external onlyOwner {
         baseURI = _baseURI;
     }
@@ -198,5 +321,12 @@ contract InsureABag is ERC721, Ownable, Pausable {
     /// @notice unpauses the contract
     function unpauseContract() external onlyOwner {
         _unpause();
+    }
+
+    /// @notice withdraw funds
+    function withdrawToVault(uint256 _amount) external onlyOwner {
+        if (_amount > address(this).balance) revert InvalidWithdrawalAmount();
+        (bool success,) = vaultAddress.call{ value: _amount }("");
+        require(success, "Failed to withdraw");
     }
 }
