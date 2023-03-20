@@ -11,16 +11,17 @@ import { Pausable } from "openzeppelin-contracts/contracts/security/Pausable.sol
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
 import { AggregatorV3Interface } from "src/interfaces/AggregatorV3Interface.sol";
+import { Counters } from "openzeppelin-contracts/contracts/utils/Counters.sol";
 
 contract InsureABag is ERC721, Ownable, Pausable {
-    using SafeMath for uint256;
     using Strings for uint256;
+    using Counters for Counters.Counter;
 
     event PolicyCreated(uint256 policyId, address collectionAddress, uint256 tokenId, uint256 expiryTime);
 
     AggregatorV3Interface internal apeEth;
     IERC20 internal apeCoin;
-    uint256 private currentIndex;
+    Counters.Counter private _tokenIds;
     uint256 internal maxRate;
     address public vaultAddress;
     string public baseURI;
@@ -69,9 +70,9 @@ contract InsureABag is ERC721, Ownable, Pausable {
         if (msg.value < _getCostETH(_duration)) revert InsufficientFunds();
         uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
         _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
-        currentIndex += 1;
-        _safeMint(msg.sender, currentIndex);
-        emit PolicyCreated(currentIndex, _contractAddress, _tokenId, expiryTimestamp);
+        _tokenIds.increment();
+        _safeMint(msg.sender, _tokenIds.current());
+        emit PolicyCreated(_tokenIds.current(), _contractAddress, _tokenId, expiryTimestamp);
     }
 
     /// @notice mint a new policy
@@ -99,9 +100,9 @@ contract InsureABag is ERC721, Ownable, Pausable {
         apeCoin.transferFrom(msg.sender, address(this), _getCostApe(_duration));
         uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
         _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
-        currentIndex += 1;
-        _safeMint(msg.sender, currentIndex);
-        emit PolicyCreated(currentIndex, _contractAddress, _tokenId, expiryTimestamp);
+        _tokenIds.increment();
+        _safeMint(msg.sender, _tokenIds.current());
+        emit PolicyCreated(_tokenIds.current(), _contractAddress, _tokenId, expiryTimestamp);
     }
 
     /// @notice renew a existing policy
