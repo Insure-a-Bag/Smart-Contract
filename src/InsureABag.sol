@@ -43,8 +43,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
     mapping(address useraddress => mapping(address contractAddress => mapping(uint256 tokenId => uint256 expiry)))
         internal _currentUsers;
 
-    constructor(string memory name_, string memory symbol_, address _apeCoin, address _apeEth) ERC721(name_, symbol_) {
-        apeCoin = IERC20(_apeCoin);
+    constructor(string memory name_, string memory symbol_, address _apeEth) ERC721(name_, symbol_) {
         apeEth = AggregatorV3Interface(_apeEth);
     }
 
@@ -326,6 +325,10 @@ contract InsureABag is ERC721, Ownable, Pausable {
     /// @notice unpauses the contract
     function unpauseContract() external onlyOwner {
         _unpause();
+    }
+
+    function setApeAddress(address _apeCoin) external onlyOwner {
+        apeCoin = IERC20(_apeCoin);
     }
 
     /// @notice withdraw funds
