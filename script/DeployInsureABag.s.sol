@@ -8,15 +8,12 @@ contract DeployInsureABag is Script {
     address internal deployer;
     InsureABag internal insureabag;
 
-    function setUp() public virtual {
-        string memory mnemonic = vm.envString("MNEMONIC");
-        (deployer,) = deriveRememberKey(mnemonic, 0);
-    }
-
     function run() public {
-        vm.startBroadcast(deployer);
+        uint256 deployerPrivateKey = vm.envUint("PRIVATE_KEY");
+        vm.startBroadcast(deployerPrivateKey);
 
-        insureabag = new InsureABag("InsureABag", "IAB");
+        address apeEth = 0xb4c4a493AB6356497713A78FFA6c60FB53517c63;
+        insureabag = new InsureABag("InsureABag", "IAB", apeEth);
 
         vm.stopBroadcast();
     }

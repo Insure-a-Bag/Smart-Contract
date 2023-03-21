@@ -16,9 +16,10 @@ contract InsureABagTest is PRBTest, StdCheats {
     address public minter2;
     address public minter3;
 
+    address public apeEth = 0x239d5b78680e9AD600Ab41E56508670BA9E78F51;
+
     string public name = "InsureABag";
     string public symbol = "IAB";
-
 
     function setUp() public {
         (owner, ownerPkey) = makeAddrAndKey("owner");
@@ -28,7 +29,7 @@ contract InsureABagTest is PRBTest, StdCheats {
         vm.deal(minter3, 20 ether);
 
         vm.prank(owner);
-        insureabag = new InsureABag("InsureABag", "IAB");
+        insureabag = new InsureABag("InsureABag", "IAB", apeEth);
     }
 
     function testDeployment() public {
