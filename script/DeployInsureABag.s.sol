@@ -9,7 +9,7 @@ contract DeployInsureABag is Script {
     InsureABag internal insureabag;
 
     function setUp() public virtual {
-        string memory mnemonic = vm.envString("MNEMONIC");
+        string memory mnemonic = vm.envString("");
         (deployer,) = deriveRememberKey(mnemonic, 0);
     }
 
@@ -17,9 +17,7 @@ contract DeployInsureABag is Script {
         vm.startBroadcast(deployer);
 
         address apeEth = 0xb4c4a493AB6356497713A78FFA6c60FB53517c63;
-        address ape = 0x239d5b78680e9AD600Ab41E56508670BA9E78F51;
-
-        insureabag = new InsureABag("InsureABag", "IAB", ape, apeEth);
+        insureabag = new InsureABag("InsureABag", "IAB", apeEth);
 
         vm.stopBroadcast();
     }
