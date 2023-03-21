@@ -6,7 +6,6 @@ import { ERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol
 import { Ownable } from "openzeppelin-contracts/contracts/access/Ownable.sol";
 import { MerkleProof } from "openzeppelin-contracts/contracts/utils/cryptography/MerkleProof.sol";
 import { Strings } from "openzeppelin-contracts/contracts/utils/Strings.sol";
-import { SafeMath } from "openzeppelin-contracts/contracts/utils/math/SafeMath.sol";
 import { Pausable } from "openzeppelin-contracts/contracts/security/Pausable.sol";
 import { IERC20 } from "openzeppelin-contracts/contracts/token/ERC20/IERC20.sol";
 import { IERC721 } from "openzeppelin-contracts/contracts/token/ERC721/ERC721.sol";
@@ -18,11 +17,14 @@ contract InsureABag is ERC721, Ownable, Pausable {
     using Counters for Counters.Counter;
 
     event PolicyCreated(uint256 policyId, address collectionAddress, uint256 tokenId, uint256 expiryTime);
+    event PolicyRenewed(uint256 policyId, address collectionAddress, uint256 tokenId, uint256 expiryTime);
+    event PolicyCanceled(uint256 policyId, address collectionAddress, uint256 tokenId);
 
     AggregatorV3Interface internal apeEth;
     IERC20 internal apeCoin;
     Counters.Counter private _tokenIds;
     uint256 internal maxRate;
+    uint256 public pricePerMonth = 0.01 ether;
     address public vaultAddress;
     string public baseURI;
     string public uriExtension;
@@ -129,6 +131,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
         } else if (_getCurrentBlockstamp() < expiryTime) {
             _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTime + (_duration * 1 days);
         }
+        emit PolicyRenewed(_policyId, _contractAddress, _tokenId, expiryTime);
     }
 
     /// @notice renew a existing policy
@@ -156,6 +159,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
         } else if (_getCurrentBlockstamp() < expiryTime) {
             _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTime + (_duration * 1 days);
         }
+        emit PolicyRenewed(_policyId, _contractAddress, _tokenId, expiryTime);
     }
 
     /// @notice cancel the insurance Policy
@@ -165,6 +169,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
         if (!_isApprovedOrOwner(msg.sender, _tokenId)) revert NotOwnerNorApproved();
         delete _currentUsers[msg.sender][_contractAddress][_tokenId];
         _burn(_policyId);
+        emit PolicyCanceled(_policyId, _contractAddress, _tokenId);
     }
 
     function tokenURI(uint256 _tokenId) public view virtual override returns (string memory) {
@@ -243,27 +248,26 @@ contract InsureABag is ERC721, Ownable, Pausable {
     }
 
     /// @notice obtains the floor price of collection
-    /// Needs to be incorporated with oracle
-    function _getFloorPrice() internal pure returns (uint256) {
-        return 0.01 ether;
+    function _getFloorPrice() internal view returns (uint256) {
+        return pricePerMonth;
     }
 
     /// @notice multiplies ETH cost per month by number of months
     function _getCostETH(uint256 _duration) internal view returns (uint256) {
-        uint256 durationInMonths = _duration.div(30);
+        uint256 durationInMonths = _duration / 30;
         uint256 usedRate = getRate(_duration);
-        uint256 rateTimesDuration = usedRate.mul(durationInMonths);
-        return _getFloorPrice().mul(rateTimesDuration).div(10_000);
+        uint256 rateTimesDuration = usedRate * durationInMonths;
+        return _getFloorPrice() * rateTimesDuration / 10_000;
     }
 
     /// @notice multiplies Ape cost per month by number of months
     /// @param _duration the duration in months
     function _getCostApe(uint256 _duration) internal view returns (uint256) {
-        uint256 floorPriceApe = _getFloorPrice().div(getApeEthRate());
-        uint256 durationInMonths = _duration.div(30);
+        uint256 floorPriceApe = _getFloorPrice() / getApeEthRate();
+        uint256 durationInMonths = _duration / 30;
         uint256 usedRate = getRate(_duration);
-        uint256 rateTimesDuration = usedRate.mul(durationInMonths);
-        return floorPriceApe.mul(rateTimesDuration).div(10_000);
+        uint256 rateTimesDuration = usedRate * durationInMonths;
+        return floorPriceApe * rateTimesDuration * 10_000;
     }
 
     /// @notice calculate a progressive rate
@@ -271,11 +275,11 @@ contract InsureABag is ERC721, Ownable, Pausable {
     function getRate(uint256 _duration) internal view returns (uint256) {
         uint256 usedRate;
         if (_duration >= 180 && _duration < 360) {
-            usedRate = maxRate.mul(70).div(100);
+            usedRate = maxRate * 70 / 100;
         } else if (_duration >= 360 && _duration < 540) {
-            usedRate = maxRate.mul(50).div(100);
+            usedRate = maxRate * 50 / 100;
         } else if (_duration >= 540) {
-            usedRate = maxRate.mul(30).div(100);
+            usedRate = maxRate * 30 / 100;
         } else {
             usedRate = maxRate;
         }
