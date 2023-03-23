@@ -24,7 +24,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
     IERC20 internal apeCoin;
     Counters.Counter private _tokenIds;
     uint256 internal maxRate;
-    uint256 public pricePerMonth = 0.01 ether;
+    uint256 public basePrice = 1 ether;
     address public vaultAddress;
     string public baseURI;
     string public uriExtension;
@@ -248,7 +248,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
 
     /// @notice obtains the floor price of collection
     function _getFloorPrice() internal view returns (uint256) {
-        return pricePerMonth;
+        return basePrice;
     }
 
     /// @notice multiplies ETH cost per month by number of months
@@ -266,7 +266,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
         uint256 durationInMonths = _duration / 30;
         uint256 usedRate = getRate(_duration);
         uint256 rateTimesDuration = usedRate * durationInMonths;
-        return floorPriceApe * rateTimesDuration * 10_000;
+        return floorPriceApe * rateTimesDuration / 10_000;
     }
 
     /// @notice calculate a progressive rate
