@@ -97,8 +97,9 @@ contract InsureABag is ERC721, Ownable, Pausable {
             revert TokenAlreadyRegistered();
         }
         if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
-        if (apeCoin.balanceOf(msg.sender) < _getCostApe(_duration)) revert InsufficientFunds();
-        apeCoin.transferFrom(msg.sender, address(this), _getCostApe(_duration));
+        uint256 cost = _getCostApe(_duration);
+        if (apeCoin.balanceOf(msg.sender) < cost) revert InsufficientFunds();
+        apeCoin.transferFrom(msg.sender, address(this), cost);
         uint256 expiryTimestamp = _getCurrentBlockstamp() + (_duration * 1 days);
         _currentUsers[msg.sender][_contractAddress][_tokenId] = expiryTimestamp;
         _tokenIds.increment();
@@ -150,8 +151,9 @@ contract InsureABag is ERC721, Ownable, Pausable {
         if (!_isApprovedOrOwner(msg.sender, _policyId)) revert NotOwnerNorApproved();
         if (!_isMultipleOfMonth(_duration)) revert InvalidDuration();
         if (msg.sender != IERC721(_contractAddress).ownerOf(_tokenId)) revert NotNFTOwner();
-        if (apeCoin.balanceOf(msg.sender) < _getCostApe(_duration)) revert InsufficientFunds();
-        apeCoin.transferFrom(msg.sender, address(this), _getCostApe(_duration));
+        uint256 cost = _getCostApe(_duration);
+        if (apeCoin.balanceOf(msg.sender) < cost) revert InsufficientFunds();
+        apeCoin.transferFrom(msg.sender, address(this), cost);
         uint256 expiryTime = _currentUsers[msg.sender][_contractAddress][_tokenId];
         if (_getCurrentBlockstamp() > expiryTime) {
             _currentUsers[msg.sender][_contractAddress][_tokenId] = _getCurrentBlockstamp() + (_duration * 1 days);
@@ -262,7 +264,7 @@ contract InsureABag is ERC721, Ownable, Pausable {
     /// @notice multiplies Ape cost per month by number of months
     /// @param _duration the duration in months
     function _getCostApe(uint256 _duration) internal view returns (uint256) {
-        uint256 floorPriceApe = _getFloorPrice() / getApeEthRate();
+        uint256 floorPriceApe = (_getFloorPrice() * 10 ** 18) / getApeEthRate();
         uint256 durationInMonths = _duration / 30;
         uint256 usedRate = getRate(_duration);
         uint256 rateTimesDuration = usedRate * durationInMonths;
@@ -336,5 +338,12 @@ contract InsureABag is ERC721, Ownable, Pausable {
         if (_amount > address(this).balance) revert InvalidWithdrawalAmount();
         (bool success,) = vaultAddress.call{ value: _amount }("");
         require(success, "Failed to withdraw");
+    }
+
+    /// @notice withdraw Ape tokens to vault address
+    /// @param _amount amount to ape tokens to be transfered
+    function withdrawApeToVault(uint256 _amount) external onlyOwner {
+        if (apeCoin.balanceOf(address(this)) < _amount) revert InsufficientFunds();
+        apeCoin.transferFrom(address(this), vaultAddress, _amount);
     }
 }
